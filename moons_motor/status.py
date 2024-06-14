@@ -1,4 +1,4 @@
-class moons_stepper_status:
+class MoonsStepperStatus:
     def __init__(self, address=""):
 
         # info

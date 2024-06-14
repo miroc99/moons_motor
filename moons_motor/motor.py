@@ -6,7 +6,7 @@ from rich import print
 from rich.console import Console
 from rich.panel import Panel
 import queue
-from Subject import Subject
+from subject import Subject
 
 
 class StepperModules:

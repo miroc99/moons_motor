@@ -4,7 +4,7 @@ from observer import Observer
 import time
 
 
-class moons_stepper_simulate(Observer):
+class MoonsStepperSimulate(Observer):
     def __init__(
         self,
         moons_motor: motor.MoonsStepper,

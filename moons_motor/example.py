@@ -8,11 +8,10 @@ simulate = simulate.moons_stepper_simulate(motor, 0, "http://localhost:3002")
 
 MoonsStepper.list_all_ports()
 motor.connect()
-# simulate.connect()
+simulate.connect()
 
 motor.start_jog("", 10)
 
 sleep(5)
 
 motor.stop_jog()
-motor
