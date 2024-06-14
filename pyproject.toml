@@ -32,3 +32,5 @@ classifiers = [
     # Specify the Python versions you support here.
     "Programming Language :: Python :: 3.12",
 ]
+[project.urls]
+Repository = "https://github.com/miroc99/moons_motor.git"
