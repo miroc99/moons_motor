@@ -3,100 +3,14 @@ from serial.tools import list_ports
 import re
 import time
 import threading
-import socketio
 from rich import print
 from rich.console import Console
 from rich.panel import Panel
 import queue
+from Subject import Subject
 
 
-class moons_stepper_status:
-    def __init__(self, address=""):
-
-        # info
-        self.address = ""
-        self.position = 0  # IP
-        self.temperature = 0  # IT
-        self.sensor_status = 0  # IS
-        self.voltage = 0  # IU
-        self.acceleration = 0  # AC
-        self.deceleration = 0  # DE
-        self.velocity = 0  # VE
-        self.distance = 0  # DI
-        self.jog_speed = 0  # JS
-
-        # status
-        self.status_string = ""
-        self.alarm = False
-        self.disabled = False
-        self.drive_fault = False
-        self.moving = False
-        self.homing = False
-        self.jogging = False
-        self.motion_in_progess = False
-        self.ready = False
-        self.stoping = False
-        self.waiting = False
-
-    def update_info(self, info: dict) -> bool:
-        if info is None or len(info) < 1:
-            print("Update failed: input is None")
-            return False
-        self.position = info["pos"]
-        self.temperature = info["temp"]
-        self.sensor_status = info["sensor"]
-        self.voltage = info["vol"]
-        self.acceleration = info["accel"]
-        self.deceleration = info["decel"]
-        self.velocity = info["vel"]
-        self.distance = info["dis"]
-        self.jog_speed = info["jogsp"]
-        return True
-
-    def update_status(self, status_string) -> bool:
-        if status_string == None and status_string == "":
-            print("Update failed: input is empty or None")
-            return False
-        self.status_string = status_string
-        self.alarm = "A" in status_string
-        self.disabled = "D" in status_string
-        self.drive_fault = "E" in status_string
-        self.moving = "F" in status_string
-        self.homing = "H" in status_string
-        self.jogging = "J" in status_string
-        self.motion_in_progess = "M" in status_string
-        self.ready = "R" in status_string
-        self.stoping = "S" in status_string
-        self.waiting = "T" in status_string
-        return True
-
-    def get_info(self) -> str:
-        return f"""
-        Position: {self.position}
-        Temperature: {self.temperature}
-        Sensor Status: {self.sensor_status}
-        Voltage: {self.voltage}
-        Acceleration: {self.acceleration}
-        Deceleration: {self.deceleration}
-        Velocity: {self.velocity}
-        Distance: {self.distance}
-        Jog Speed: {self.jog_speed}"""
-
-    def get_status(self) -> str:
-        return f"""
-        Alarm: {self.alarm}
-        Disabled: {self.disabled}
-        Drive Fault: {self.drive_fault}
-        Moving: {self.moving}
-        Homing: {self.homing}
-        Jogging: {self.jogging}
-        Motion in Progress: {self.motion_in_progess}
-        Ready: {self.ready}
-        Stoping: {self.stoping}
-        Waiting: {self.waiting}"""
-
-
-class moons_stepper:
+class moons_stepper(Subject):
     motorAdress = [
         "0",
         "1",
@@ -140,9 +54,8 @@ class moons_stepper:
         SERIAL_NUM,
         only_simlate=False,
         universe=0,
-        simulate_ip="localhost",
-        simulate_port=3001,
     ):
+        super().__init__()
         self.universe = universe
         self.model = model
         self.only_simulate = only_simlate
@@ -163,11 +76,6 @@ class moons_stepper:
         self.sendQueue = queue.Queue()
         self.command_cache = queue.Queue()
         self.usedSendQueue = queue.Queue()
-        self.simulator = moons_stepper_simulate(
-            self,
-            universe=universe,
-            server_address=f"http://{simulate_ip}:{simulate_port}",
-        )
 
         self.console = Console()
 
@@ -190,7 +98,6 @@ class moons_stepper:
             14: 50000,
             15: 50800,
         }
-        self.simulator.connect()
 
     # region connection & main functions
     @staticmethod
@@ -323,7 +230,7 @@ class moons_stepper:
                 print(
                     f"[bold green]Send to {self.device}:[/bold green] {self.temp_cmd}"
                 )
-            self.simulator.emit("motor", f"{self.universe}-{self.temp_cmd}")
+            super().notify_observers(f"{self.universe}-{self.temp_cmd}")
         else:
             print(f"{self.device} is not open")
 
@@ -575,69 +482,6 @@ class moons_stepper:
             return result.group(1)
         else:
             return "No_value_found"
-
-
-class moons_stepper_simulate:
-    def __init__(
-        self,
-        moons_motor: moons_stepper,
-        universe: int = 0,
-        server_address: str = "http://localhost:3001",
-    ):
-        self.server_address = server_address
-        self.universe = universe
-        self.moons_motor = moons_motor
-        self.io = socketio.SimpleClient()
-        self.connected = False
-        self.is_log_message = True
-
-    def connect(self):
-        try:
-            self.is_log_message = False
-            self.io.connect(self.server_address)
-            self.connected = True
-            print(f"Socket connected to {self.server_address}[{self.io.sid}]")
-            # self.rederict_thread = threading.Thread(
-            #     target=self.rederict_job,
-            # )
-            # self.rederict_thread.daemon = True
-            # self.rederict_thread.start()
-        except Exception as e:
-            print(f"Socket connection error: {e}")
-            self.connected = False
-
-    def rederict_job(self):
-        if not self.connected:
-            print("Socket not connected")
-            return
-        if self.moons_motor is None:
-            print("Motor is None")
-            return
-        while True:
-            # self.moons_motor.on_send_event.wait(timeout=0.5)
-            if self.moons_motor.command_cache.empty():
-                continue
-            cmd = self.moons_motor.command_cache.get_nowait()
-            # self.moons_motor.command_cache.task_done()
-
-            self.emit("motor", f"{self.universe}-{cmd}")
-            # self.moons_motor.command_cache = ""
-            # self.moons_motor.on_send_event.clear()
-
-            if not self.connected:
-                break
-            time.sleep(0.05)
-
-    def disconnect(self):
-        self.io.disconnect()
-
-    def emit(self, eventName: str, data):
-        if not self.connected:
-            print("Socket not connected")
-            return
-        self.io.emit(eventName, data)
-        if self.is_log_message:
-            print("[bold blue]Send to socket:[/bold blue] {}\n".format(data))
 
 
 # endregion
