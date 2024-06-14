@@ -1,13 +1,13 @@
 import socketio
 import motor
-from Observer import Observer
+from observer import Observer
 import time
 
 
 class moons_stepper_simulate(Observer):
     def __init__(
         self,
-        moons_motor: motor.moons_stepper,
+        moons_motor: motor.MoonsStepper,
         universe: int = 0,
         server_address: str = "http://localhost:3001",
     ):

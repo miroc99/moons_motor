@@ -1,7 +1,6 @@
 import serial
 from serial.tools import list_ports
 import re
-import time
 import threading
 from rich import print
 from rich.console import Console
@@ -10,7 +9,11 @@ import queue
 from Subject import Subject
 
 
-class moons_stepper(Subject):
+class StepperModules:
+    STM17S_3RN = "STM17S-3RN"
+
+
+class MoonsStepper(Subject):
     motorAdress = [
         "0",
         "1",
@@ -48,7 +51,7 @@ class moons_stepper(Subject):
 
     def __init__(
         self,
-        model,
+        model: StepperModules,
         VID,
         PID,
         SERIAL_NUM,
@@ -102,7 +105,6 @@ class moons_stepper(Subject):
     # region connection & main functions
     @staticmethod
     def list_all_ports():
-        # print("░░░░░░░░░░░░░░░░░░░ All COMPorts ░░░░░░░░░░░░░░░░░░░░░\n")
         ports = list(list_ports.comports())
         simple_ports = []
         port_info = ""
@@ -111,7 +113,6 @@ class moons_stepper(Subject):
             if p != ports[-1]:
                 port_info += "\n"
             simple_ports.append(p.description)
-        # print("\n░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░")
         print(Panel(port_info, title="All COMPorts"))
         return simple_ports
 
@@ -128,10 +129,10 @@ class moons_stepper(Subject):
             try:
                 self.ser = serial.Serial(COM, baudrate)
                 if self.ser is None:
-                    print("> Device not found")
+                    # print("> Device not found")
                     self.Opened = False
                 if self.ser.is_open:
-                    print(f"Device: {self.device} | COM: {COM} connected")
+                    # print(f"Device: {self.device} | COM: {COM} connected")
                     self.Opened = True
             except:
                 print("> Device error")
@@ -163,36 +164,15 @@ class moons_stepper(Subject):
                 if callback:
                     callback(self.device, self.Opened)
                     break
-                # try:
-                #     self.ser = serial.Serial(p.device, baudrate)
-                # except Exception as e:
-                #     print(f"Permission Error: {e}")
-                #     self.Opened = False
-                #     return
-
-                # self.listeningThread = threading.Thread(target=self.listening)
-                # self.sendingThread = threading.Thread(target=self.sending)
-                # self.listeningThread.daemon = True
-                # self.sendingThread.daemon = True
-                # self.listeningThread.start()
-                # self.sendingThread.start()
-
                 break
 
             if self.only_simulate:
                 self.device = "Simulate"
                 self.Opened = True
-            if not self.Opened:
-                print("> Device not found")
-                if callback:
-                    callback(self.device, self.Opened)
-                # self.sendingThread = threading.Thread(target=self.sending)
-                # self.sendingThread.daemon = True
-                # self.sendingThread.start()
-        # self.device = "Target device"
-        # if self.ser is None and not self.only_simlate:
-        #     print("> Device not found")
-        #     self.Opened = False
+        if not self.Opened:
+            print("> Device not found")
+            if callback:
+                callback(self.device, self.Opened)
 
     def disconnect(self):
         if self.only_simulate:
@@ -207,15 +187,10 @@ class moons_stepper(Subject):
             self.Opened = False
             self.ser.flush()
             self.ser.close()
-            # if self.device is not None:
-            #     print("{} Disconnected".format(self.device))
-            # else:
             print(f"{self.device} Disconnected")
 
     def send(self, command, eol=b"\r"):
         if (self.ser != None and self.ser.is_open) or self.only_simulate:
-            # self.sendQueue.put(command + "\r")
-            # self.temp_cmd = self.sendQueue.get()
             self.temp_cmd = command + "\r"
 
             if "~" in self.temp_cmd:
@@ -223,7 +198,6 @@ class moons_stepper(Subject):
                 self.temp_cmd = self.temp_cmd[1:]
             else:
                 self.usedSendQueue.put(self.temp_cmd)
-                # self.command_cache.put(self.temp_cmd)
             if self.ser is not None or not self.only_simulate:
                 self.ser.write(self.temp_cmd.encode("ascii"))
             if self.is_log_message:
@@ -232,81 +206,7 @@ class moons_stepper(Subject):
                 )
             super().notify_observers(f"{self.universe}-{self.temp_cmd}")
         else:
-            print(f"{self.device} is not open")
-
-    def sending(self):
-        self.is_sending = True
-        print("Sending thread started")
-        # start_time = time.time()
-        try:
-            while self.is_sending:
-                # start_time = time.time()
-                if self.sendQueue.empty():
-                    continue
-                # self.temp_cmd = ""
-                self.temp_cmd = self.sendQueue.get_nowait()
-
-                if "~" in self.temp_cmd:
-                    # remove ~ in self.temp_cmd
-                    self.temp_cmd = self.temp_cmd[1:]
-                else:
-                    self.usedSendQueue.put(self.temp_cmd)
-                # self.command_cache.put(self.temp_cmd)
-
-                if self.ser is not None and self.ser.is_open is not self.only_simulate:
-                    self.ser.write(self.temp_cmd.encode("ascii"))
-                # print(
-                #     f"[bold green]Send to {self.device}:[/bold green] {self.temp_cmd}"
-                # )
-                # self.simulate.emit("motor", f"{self.universe}-{self.temp_cmd}")
-                # print(f"[bold yellow]Cache:[/bold yellow]{self.temp_cmd}")
-
-                self.sendQueue.task_done()
-
-                time.sleep(0.05)
-
-        except Exception as e:
-            print("Error in sending thread:")
-            print(e)
-            self.is_sending = False
-
-    def listening(self):
-        self.listen = True
-        self.listeningBuffer = ""
-        print("Listening thread started")
-        # start_time = time.time()
-        try:
-            while True:
-                # start_time = time.time()
-                if not self.listen:
-                    break
-                if self.only_simulate:
-                    continue
-                if self.ser is not None and self.ser.is_open:
-                    if self.ser.in_waiting > 0:
-                        self.listeningBuffer += self.ser.read(1).decode(
-                            "utf-8", "replace"
-                        )
-                        if self.listeningBuffer.endswith("\r"):
-                            self.recvQueue.put(self.listeningBuffer)
-                            self.listeningBuffer = ""
-                else:
-                    print(f"{self.device} is not open")
-                if not self.recvQueue.empty():
-                    self.temp_recv = self.recvQueue.get()
-                    self.temp_used_cmd = self.usedSendQueue.get()
-                    print(
-                        f"[bold green]Recv:[/bold green] {self.temp_used_cmd}->{self.temp_recv}"
-                    )
-                    self.recvQueue.task_done()
-                    self.usedSendQueue.task_done()
-                time.sleep(0.05)
-                # print(f"Time: {time.time()-start_time}")
-        except Exception as e:
-            print("Error in listening thread:")
-            print(e)
-            self.listen = False
-        print("Listening thread stopped")
+            print(f"Target device is not opened. Command: {command}")
 
     # endregion
 
@@ -316,22 +216,14 @@ class moons_stepper(Subject):
         self.send(self.addressed_cmd(motor_address, cmd))
 
     def move_absolute(self, motor_address="", position=0, speed=0.15):
-        # if speed > 0:
-        #     self.set_velocity(motor_address, speed)
         self.send(self.addressed_cmd(motor_address, f"VE{speed}"))
         self.send(self.addressed_cmd(motor_address, f"FP{position}"))
 
     def move_fixed_distance(self, motor_address="", distance=100, speed=0.15):
-        # if speed > 0:
-        #     self.set_velocity(motor_address, speed)
         self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
         self.send(self.addressed_cmd(motor_address, "FL{}".format(int(distance))))
 
     def start_jog(self, motor_address="", speed=0.15, direction="CW"):
-        # if direction == "CW":
-        #     self.send(self.addressed_cmd(motor_address, "DI1"))
-        # if direction == "CCW":
-        #     self.send(self.addressed_cmd(motor_address, "DI-1"))
         self.send(self.addressed_cmd(motor_address, "JS{}".format(speed)))
         self.send(self.addressed_cmd(motor_address, "CJ"))
 
@@ -356,18 +248,12 @@ class moons_stepper(Subject):
     def setup_motor(self, motor_address="", kill=False):
         if kill:
             self.stop_and_kill(motor_address)
-        # time.sleep(1)
         self.set_transmit_delay(motor_address, 25)
         self.set_return_format_dexcimal(motor_address)
-        # self.motor_wait(motor_address, 0.1)
-        # status = self.get_status(motor_address)
 
     def calibrate(self, motor_address="", speed=0.3, onStart=None, onComplete=None):
         self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
-        # self.send(self.addressed_cmd(motor_address, "WT0.2"))
         self.send(self.addressed_cmd(motor_address, "DI10"))
-        # time.sleep(self.transmitDelay)
-        # self.send(self.addressed_cmd(motor_address, "FS3F"))
         self.send(self.addressed_cmd(motor_address, "SH3F"))
         self.send(self.addressed_cmd(motor_address, "EP0"))
         self.send(self.addressed_cmd(motor_address, "SP0"))
@@ -377,6 +263,7 @@ class moons_stepper(Subject):
         self.send(self.addressed_cmd(motor_address, "TD{}".format(delay)))
 
     # endregion
+
     # region motor status functions
     def get_position(self, motor_address):
         self.send(self.addressed_cmd(motor_address, "IP"))

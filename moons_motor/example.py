@@ -1,15 +1,16 @@
-import motor
+from motor import MoonsStepper, StepperModules
 import simulate
 from time import sleep
 
-motor = motor.moons_stepper("STM17S-3RN", "0403", "6001", "TESTA", True)
+motor = MoonsStepper(StepperModules.STM17S_3RN, "0403", "6001", "TESTA", False)
 
 simulate = simulate.moons_stepper_simulate(motor, 0, "http://localhost:3002")
 
+MoonsStepper.list_all_ports()
 motor.connect()
-simulate.connect()
+# simulate.connect()
 
-motor.start_jog("", 1)
+motor.start_jog("", 10)
 
 sleep(5)
 
