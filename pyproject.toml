@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moons_motor"
-version = "0.0.4"
+version = "0.0.7"
 authors = [{ name = "miroc", email = "mike8503111@gmail.com" }]
 description = "This is a python library for controlling the Moons' motor through the serial port."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pyserial", "rich", "python-socketio", "request"]
+dependencies = ["pyserial", "rich", "python-socketio", "requests"]
 classifiers = [
     # How mature is this project? Common values are
     #   3 - Alpha
