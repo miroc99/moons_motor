@@ -10,15 +10,18 @@ class MoonsStepperSimulate(Observer):
         moons_motor: MoonsStepper,
         universe: int = 0,
         server_address: str = "http://localhost:3001",
+        log_message: bool = True,
     ):
         self.server_address = server_address
         self.universe = universe
         self.moons_motor = moons_motor
         self.io = socketio.SimpleClient()
         self.connected = False
-        self.is_log_message = True
+        self.log_message = True
 
     def update(self, event):
+        if self.log_message == False:
+            return
         print(f"Simulate send: {event}")
         self.emit("motor", event)
 

@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 import queue
 from moons_motor.subject import Subject
+import time
 
 
 class StepperModules:
@@ -146,25 +147,28 @@ class MoonsStepper(Subject):
         ports = list(list_ports.comports())
         for p in ports:
             m = re.match(
-                r"USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]+)", p.usb_info()
+                r"USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]*)", p.usb_info()
             )
+            print(m, p.usb_info())
             if (
                 m
                 and m.group(1) == self.VID
                 and m.group(2) == self.PID
-                and m.group(3) == self.SERIAL_NUM
+                # and m.group(3) == self.SERIAL_NUM
             ):
-                print(
-                    f"Device: {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)} connected"
-                )
+                print("find vid pid match")
+                if m.group(3) == self.SERIAL_NUM or self.SERIAL_NUM == "":
+                    print(
+                        f"Device: {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)} connected"
+                    )
 
-                self.device = p.description
+                    self.device = p.description
 
-                attempt_connect(p.device, baudrate)
-                if callback:
-                    callback(self.device, self.Opened)
+                    attempt_connect(p.device, baudrate)
+                    if callback:
+                        callback(self.device, self.Opened)
+                        break
                     break
-                break
 
             if self.only_simulate:
                 self.device = "Simulate"
@@ -199,6 +203,7 @@ class MoonsStepper(Subject):
             else:
                 self.usedSendQueue.put(self.temp_cmd)
             if self.ser is not None or not self.only_simulate:
+                self.temp_cmd += "\r"
                 self.ser.write(self.temp_cmd.encode("ascii"))
             if self.is_log_message:
                 print(
@@ -225,7 +230,9 @@ class MoonsStepper(Subject):
 
     def start_jog(self, motor_address="", speed=0.15, direction="CW"):
         self.send(self.addressed_cmd(motor_address, "JS{}".format(speed)))
+        time.sleep(0.01)
         self.send(self.addressed_cmd(motor_address, "CJ"))
+        # self.send(self.addressed_cmd(motor_address, "CS{}".format(speed)))
 
     def change_jog_speed(self, motor_address="", speed=0.15):
         self.send(self.addressed_cmd(motor_address, "CS{}".format(speed)))
@@ -253,10 +260,17 @@ class MoonsStepper(Subject):
 
     def calibrate(self, motor_address="", speed=0.3, onStart=None, onComplete=None):
         self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
+        # time.sleep(0.01)
         self.send(self.addressed_cmd(motor_address, "DI10"))
+        # time.sleep(0.01)
         self.send(self.addressed_cmd(motor_address, "SH3F"))
+        # time.sleep(0.01)
         self.send(self.addressed_cmd(motor_address, "EP0"))
+        # time.sleep(0.01)
         self.send(self.addressed_cmd(motor_address, "SP0"))
+
+    def alarm_reset(self, motor_address=""):
+        self.send(self.addressed_cmd(motor_address, "AR"))
 
     # speed slow= 0.25, medium=1, fast=5
     def set_transmit_delay(self, motor_address="", delay=15):
