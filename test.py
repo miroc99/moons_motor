@@ -4,10 +4,22 @@ from time import sleep
 motor_ctrl = MoonsStepper(
     StepperModules.STM17S_3RN, VID="1A86", PID="7523", SERIAL_NUM=""
 )
+homed = False
+
+
+def homing_callback(x):
+    global homed
+    print(f"Homing callback: {x}")
+    homed = True
+
 
 motor_ctrl.connect()
 sleep(1)
 motor_ctrl.send_command(command=StepperCommand.stop_kill)
+motor_ctrl.home(onComplete=lambda x: homing_callback(x))
+
+while not homed:
+    sleep(0.01)
 # # motor_ctrl.send("JS0.1")
 # # motor_ctrl.send("@CJ")
 # motor_ctrl.send_command(address="", command=StepperCommand.jog)

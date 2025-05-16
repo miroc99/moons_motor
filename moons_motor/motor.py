@@ -40,6 +40,16 @@ class StepperCommand:
     encoder_position: str = "EP"  # Encoder position
     set_position: str = "SP"  # Set encoder position
 
+    home: str = "SH3F"  # Home position
+    velocity: str = "VE"  # Set velocity
+
+    alarm_reset: str = "AR"  # Reset alarm
+
+    set_return_format_dexcimal: str = "IFD"  # Set return format to decimal
+    set_return_format_hexdecimal: str = "IFH"  # Set return format to hexadecimal
+
+    set_transmit_delay: str = "TD"  # Set transmit delay
+
 
 class MoonsStepper(Subject):
     motorAdress = [
@@ -187,7 +197,6 @@ class MoonsStepper(Subject):
                         print(
                             f"[bold yellow]Device founded:[/bold yellow] {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)}"
                         )
-                        # start update thread
 
                         self.device = p.description
 
@@ -293,47 +302,6 @@ class MoonsStepper(Subject):
     # endregion
 
     # region motor motion functions
-    # def enable(self, motor_address="", enable=True):
-    #     cmd = "ME" if enable else "MD"
-    #     self.send(self.addressed_cmd(motor_address, cmd))
-
-    # def move_absolute(self, motor_address="", position=0, speed=0.15):
-    #     self.send(self.addressed_cmd(motor_address, f"VE{speed}"))
-    #     self.send(self.addressed_cmd(motor_address, f"FP{position}"))
-
-    # def move_fixed_distance(self, motor_address="", distance=100, speed=0.15):
-    #     self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
-    #     self.send(self.addressed_cmd(motor_address, "FL{}".format(int(distance))))
-
-    # def start_jog(self, motor_address="", speed=0.15, direction="CW"):
-    #     self.sendQueue.put_nowait(
-    #         self.addressed_cmd(motor_address, "JS{}".format(speed))
-    #     )
-    #     time.sleep(0.01)
-    #     self.sendQueue.put_nowait(
-    #         self.addressed_cmd(motor_address, "CJ" if direction == "CW" else "CCW")
-    #     )
-
-    # def change_jog_speed(self, motor_address="", speed=0.15):
-
-    #     self.sendQueue.put_nowait(
-    #         self.addressed_cmd(motor_address, "CS{}".format(speed))
-    #     )
-
-    # def stop_jog(self, motor_address=""):
-    #     self.send(self.addressed_cmd(motor_address, "SJ"))
-
-    # def stop(self, motor_address=""):
-    #     self.send(self.addressed_cmd(motor_address, "ST"))
-
-    # def stop_with_deceleration(self, motor_address=""):
-    #     self.send(self.addressed_cmd(motor_address, "STD"))
-
-    # def stop_and_kill(self, motor_address="", with_deceleration=True):
-    #     if with_deceleration:
-    #         self.send(self.addressed_cmd(motor_address, "SKD"))
-    #     else:
-    #         self.send(self.addressed_cmd(motor_address, "SK"))
 
     def setup_motor(self, motor_address="", kill=False):
         if kill:
@@ -341,26 +309,24 @@ class MoonsStepper(Subject):
         self.set_transmit_delay(motor_address, 25)
         self.set_return_format_dexcimal(motor_address)
 
-    def calibrate(self, motor_address="", speed=0.3, onStart=None, onComplete=None):
-        self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
-        # time.sleep(0.01)
-        # self.send(self.addressed_cmd(motor_address, "DI10"))
-        # time.sleep(0.01)
-        self.send(self.addressed_cmd(motor_address, "SH3F"))
-        # time.sleep(0.01)
-        self.send(self.addressed_cmd(motor_address, "EP0"))
-        # time.sleep(0.01)
-        self.send(self.addressed_cmd(motor_address, "SP0"))
-
-    def alarm_reset(self, motor_address=""):
-        self.send(self.addressed_cmd(motor_address, "AR"))
-
-    # speed slow= 0.25, medium=1, fast=5
-    def set_transmit_delay(self, motor_address="", delay=15):
-        # self.send(self.addressed_cmd(motor_address, "TD{}".format(delay)))
-        self.sendQueue.put_nowait(
-            self.addressed_cmd(motor_address, "TD{}".format(delay))
+    def home(self, motor_address="", speed=0.3, onComplete=None):
+        self.send_command(
+            address=motor_address, command=StepperCommand.velocity, value=speed
         )
+        self.send_command(
+            address=motor_address,
+            command=StepperCommand.home,
+        )
+        self.send_command(
+            address=motor_address, command=StepperCommand.encoder_position
+        )
+        self.send_command(
+            address=motor_address, command=StepperCommand.set_position, value=0
+        )
+        if onComplete:
+            self.get_status(
+                motor_address, StepperCommand.set_position, callback=onComplete
+            )
 
     # endregion
     def get_status(self, motor_address, command: StepperCommand, callback=None):
@@ -369,32 +335,14 @@ class MoonsStepper(Subject):
             self.pending_callbacks[command] = callback
         self.sendQueue.put_nowait(command)
 
-    def set_return_format_dexcimal(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "IFD"))
-
-    def set_return_format_hexdecimal(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "IFH"))
-
     # endregion
 
     # region utility functions
-    def motor_wait(self, motor_address, wait_time):
-        self.send(self.addressed_cmd(motor_address, "WT{}".format(wait_time)))
 
     def addressed_cmd(self, motor_address, command):
         # if motor_address == "":
         #     return f"~{command}"
         return f"{motor_address}{command}"
-
-    def extractValueFromResponse(self, response):
-        pattern = r"=(.*)"
-        if response == None:
-            return None
-        result = re.search(pattern, response)
-        if result:
-            return result.group(1)
-        else:
-            return None
 
 
 # endregion
