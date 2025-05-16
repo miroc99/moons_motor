@@ -10,9 +10,35 @@ from moons_motor.subject import Subject
 import time
 import threading
 
+from dataclasses import dataclass
+
 
 class StepperModules:
     STM17S_3RN = "STM17S-3RN"
+
+
+@dataclass
+class StepperCommand:
+    jog: str = "CJ"  # Start jogging
+    jog_speed: str = "JS"  # Jogging speed (Need to set before start jogging)
+    change_jog_speed: str = "CS"  # Change jogging speed while jogging
+    stop_jog: str = "SJ"  # Stop jogging with deceleration
+    stop: str = "ST"  # Stop immediately
+    stop_decel: str = "STD"  # Stop with deceleration
+    stop_kill: str = "SK"  # Stop and kill all unexecuted commands
+    stop_kill_decel: str = (
+        "SKD"  # Stop and kill all unexecuted commands with deceleration
+    )
+    enable: str = "ME"  # Enable motor
+    disable: str = "MD"  # Disable motor
+    move_absolute: str = "FP"  # Move to absolute position
+    move_fixed_distance: str = "FL"  # Move to fixed distance
+    position: str = "IP"  # Motor absolute position(Calculated trajectory position)
+    temperature: str = "IT"  # Motor temperature
+    voltage: str = "IU"  # Motor voltage
+
+    encoder_position: str = "EP"  # Encoder position
+    set_position: str = "SP"  # Set encoder position
 
 
 class MoonsStepper(Subject):
@@ -62,25 +88,17 @@ class MoonsStepper(Subject):
     ):
         super().__init__()
         self.universe = universe
-        self.model = model
+        self.model = model  # Motor model
         self.only_simulate = only_simlate
-        self.device = ""
+        self.device = ""  # COM port description
         self.VID = VID
         self.PID = PID
-        self.SERIAL_NUM = SERIAL_NUM
+        self.SERIAL_NUM = SERIAL_NUM  # ID for determent the deivice had same VID and PID, can be config using chips manufacturer tool
         self.ser = None
-        self.listeningBuffer = ""
-        self.listeningBufferPre = ""
-        self.transmitDelay = 0.010
-        self.lock = False
         self.Opened = False
-        self.new_data_event = threading.Event()
-        self.new_value_event = threading.Event()
-        self.on_send_event = threading.Event()
         self.recvQueue = queue.Queue()
         self.sendQueue = queue.Queue()
-        self.command_cache = queue.Queue()
-        self.usedSendQueue = queue.Queue()
+        self.pending_callbacks = {}
         self.update_thread = None
         self.is_updating = False
 
@@ -138,6 +156,7 @@ class MoonsStepper(Subject):
                 if self.ser.is_open:
                     # print(f"Device: {self.device} | COM: {COM} connected")
                     self.Opened = True
+
             except:
                 print("> Device error")
                 self.Opened = False
@@ -165,14 +184,16 @@ class MoonsStepper(Subject):
                         f"Device: {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)} connected"
                     )
                     # start update thread
+
+                    self.device = p.description
+
+                    attempt_connect(p.device, baudrate)
+                    time.sleep(0.5)
                     self.update_thread = threading.Thread(
                         target=self.update, daemon=True
                     )
                     self.is_updating = True
                     self.update_thread.start()
-                    self.device = p.description
-
-                    attempt_connect(p.device, baudrate)
                     if callback:
                         callback(self.device, self.Opened)
 
@@ -210,11 +231,11 @@ class MoonsStepper(Subject):
         if (self.ser != None and self.ser.is_open) or self.only_simulate:
             self.temp_cmd = command + "\r"
 
-            if "~" in self.temp_cmd:
-                # remove ~ in self.temp_cmd
-                self.temp_cmd = self.temp_cmd[1:]
-            else:
-                self.usedSendQueue.put(self.temp_cmd)
+            # if "~" in self.temp_cmd:
+            #     # remove ~ in self.temp_cmd
+            #     self.temp_cmd = self.temp_cmd[1:]
+            # else:
+            # self.usedSendQueue.put(self.temp_cmd)
             if self.ser is not None or not self.only_simulate:
                 self.temp_cmd += "\r"
                 self.ser.write(self.temp_cmd.encode("ascii"))
@@ -226,98 +247,98 @@ class MoonsStepper(Subject):
         else:
             print(f"Target device is not opened. Command: {command}")
 
-    def read(self, timeout=1):
-        if self.ser is not None and self.ser.is_open:
-            print("reading...")
-            try:
-                start_time = time.time()
-                while time.time() - start_time < timeout:
-                    if self.ser.in_waiting > 0:
-                        response = self.ser.read(self.ser.in_waiting)
-                        response = response.decode("utf-8").strip()
-                        if self.is_log_message:
-                            print(
-                                f"[bold blue]Recv from {self.device} :[/bold blue] {response}"
-                            )
-                        return response
-                    # time.sleep(0.01)
-                print("reading timeout")
-                return None
-            except Exception as e:
-                print(f"Error when reading serial port: {str(e)}")
-                return None
-        elif self.only_simulate:
-            simulated_response = "simulate response"
-            if self.is_log_message:
-                print(
-                    f"[bold blue]Recv from simulate device:[/bold blue] {simulated_response}"
-                )
-            return simulated_response
+    def send_command(self, address="", command="", value=None):
+        if command == "":
+            print("Command can't be empty")
+            return
+        if value is not None:
+            command = self.addressed_cmd(address, command + str(value))
         else:
-            print("Device not open, read fail.")
-            return None
+            # command = self.addressed_cmd(address, command)
+            command = f"{address}{command}"
+
+        self.sendQueue.put_nowait(command)
 
     def update(self):
+
         while self.is_updating:
+            if self.ser is not None:
+                if self.ser.in_waiting > 0:
+                    response = self.ser.read(self.ser.in_waiting)
+                    response = response.decode("ascii", errors="ignore").strip()
+                    self.process_recv(response)
+                    time.sleep(0.01)  # Send delay
             if self.sendQueue.empty() != True:
                 while not self.sendQueue.empty():
                     cmd = self.sendQueue.get_nowait()
                     self.send(cmd)
                     self.sendQueue.task_done()
-                time.sleep(0.01)
-            if self.ser is not None:
-                if self.ser.in_waiting > 0:
-                    response = self.ser.read(self.ser.in_waiting)
-                    response = response.decode("utf-8").strip()
-                    print(f"Recv: {response}")
+                time.sleep(
+                    0.01
+                )  # Time for RS485 converter to switch between Transmit and Receive mode
+
+    def process_recv(self, response):
+        if "*" in response:
+            print("buffered_ack")
+        elif "%" in response:
+            print(f"[bold green](v)success_ack[/bold green]")
+        elif "?" in response:
+            print(f"[bold red](x)fail_ack[/bold red]")
+        else:
+            print(f"[bold blue]Received:[/bold blue]", response)
+            self.recvQueue.put_nowait(response)
+
+            for command, callback in list(self.pending_callbacks.items()):
+                if command in response:
+                    if callback:
+                        callback(response)
+                    del self.pending_callbacks[command]
+                    break
 
     # endregion
 
     # region motor motion functions
-    def enable(self, motor_address="", enable=True):
-        cmd = "ME" if enable else "MD"
-        self.send(self.addressed_cmd(motor_address, cmd))
+    # def enable(self, motor_address="", enable=True):
+    #     cmd = "ME" if enable else "MD"
+    #     self.send(self.addressed_cmd(motor_address, cmd))
 
-    def move_absolute(self, motor_address="", position=0, speed=0.15):
-        self.send(self.addressed_cmd(motor_address, f"VE{speed}"))
-        self.send(self.addressed_cmd(motor_address, f"FP{position}"))
+    # def move_absolute(self, motor_address="", position=0, speed=0.15):
+    #     self.send(self.addressed_cmd(motor_address, f"VE{speed}"))
+    #     self.send(self.addressed_cmd(motor_address, f"FP{position}"))
 
-    def move_fixed_distance(self, motor_address="", distance=100, speed=0.15):
-        self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
-        self.send(self.addressed_cmd(motor_address, "FL{}".format(int(distance))))
+    # def move_fixed_distance(self, motor_address="", distance=100, speed=0.15):
+    #     self.send(self.addressed_cmd(motor_address, "VE{}".format(speed)))
+    #     self.send(self.addressed_cmd(motor_address, "FL{}".format(int(distance))))
 
-    def start_jog(self, motor_address="", speed=0.15, direction="CW"):
-        # self.send(self.addressed_cmd(motor_address, "JS{}".format(speed)))
-        self.sendQueue.put_nowait(
-            self.addressed_cmd(motor_address, "JS{}".format(speed))
-        )
-        time.sleep(0.01)
-        # self.send(self.addressed_cmd(motor_address, "CJ"))
-        self.sendQueue.put_nowait(
-            self.addressed_cmd(motor_address, "CJ" if direction == "CW" else "CCW")
-        )
-        # self.send(self.addressed_cmd(motor_address, "CS{}".format(speed)))
+    # def start_jog(self, motor_address="", speed=0.15, direction="CW"):
+    #     self.sendQueue.put_nowait(
+    #         self.addressed_cmd(motor_address, "JS{}".format(speed))
+    #     )
+    #     time.sleep(0.01)
+    #     self.sendQueue.put_nowait(
+    #         self.addressed_cmd(motor_address, "CJ" if direction == "CW" else "CCW")
+    #     )
 
-    def change_jog_speed(self, motor_address="", speed=0.15):
-        # self.send(self.addressed_cmd(motor_address, "CS{}".format(speed)))
-        self.sendQueue.put_nowait(
-            self.addressed_cmd(motor_address, "CS{}".format(speed))
-        )
+    # def change_jog_speed(self, motor_address="", speed=0.15):
 
-    def stop_jog(self, motor_address=""):
-        self.send(self.addressed_cmd(motor_address, "SJ"))
+    #     self.sendQueue.put_nowait(
+    #         self.addressed_cmd(motor_address, "CS{}".format(speed))
+    #     )
 
-    def stop(self, motor_address=""):
-        self.send(self.addressed_cmd(motor_address, "ST"))
+    # def stop_jog(self, motor_address=""):
+    #     self.send(self.addressed_cmd(motor_address, "SJ"))
 
-    def stop_with_deceleration(self, motor_address=""):
-        self.send(self.addressed_cmd(motor_address, "STD"))
+    # def stop(self, motor_address=""):
+    #     self.send(self.addressed_cmd(motor_address, "ST"))
 
-    def stop_and_kill(self, motor_address="", with_deceleration=True):
-        if with_deceleration:
-            self.send(self.addressed_cmd(motor_address, "SKD"))
-        else:
-            self.send(self.addressed_cmd(motor_address, "SK"))
+    # def stop_with_deceleration(self, motor_address=""):
+    #     self.send(self.addressed_cmd(motor_address, "STD"))
+
+    # def stop_and_kill(self, motor_address="", with_deceleration=True):
+    #     if with_deceleration:
+    #         self.send(self.addressed_cmd(motor_address, "SKD"))
+    #     else:
+    #         self.send(self.addressed_cmd(motor_address, "SK"))
 
     def setup_motor(self, motor_address="", kill=False):
         if kill:
@@ -341,108 +362,17 @@ class MoonsStepper(Subject):
 
     # speed slow= 0.25, medium=1, fast=5
     def set_transmit_delay(self, motor_address="", delay=15):
-        self.send(self.addressed_cmd(motor_address, "TD{}".format(delay)))
+        # self.send(self.addressed_cmd(motor_address, "TD{}".format(delay)))
+        self.sendQueue.put_nowait(
+            self.addressed_cmd(motor_address, "TD{}".format(delay))
+        )
 
     # endregion
-
-    # region motor status functions
-    def get_position(self, motor_address):
-        # self.send(self.addressed_cmd(motor_address, "IP"))
-        self.sendQueue.put_nowait(self.addressed_cmd(motor_address, "IP"))
-        # return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_temperature(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "IT"))
-        # self.new_value_event.wait(timeout=0.5)
-        return self.read()
-        # return int(self.get_value()) / 10
-
-    def get_sensor_status(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "IS"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_votalge(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "IU"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_acceleration(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "AC"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_deceleration(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "DE"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_velocity(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "VE"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_distance(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "DI"))
-        return self.read()
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-
-    def get_jog_speed(self, motor_address):
-        self.send(self.addressed_cmd(motor_address, "JS"))
-        # self.new_value_event.wait(timeout=0.5)
-        # return self.get_value()
-        return self.read()
-
-    def get_info(self, motor_address, progress=None):
-        self.set_return_format_dexcimal(motor_address)
-        self.motor_wait(motor_address, 0.1)
-        totalInfoCount = 7
-        pos = self.extractValueFromResponse(self.get_position(motor_address))
-        if progress:
-            progress(round(1 / totalInfoCount, 1))
-        temp = (
-            int(self.extractValueFromResponse(self.get_temperature(motor_address))) / 10
-        )
-        if progress:
-            progress(round(2 / totalInfoCount, 1))
-        vol = int(self.extractValueFromResponse(self.get_votalge(motor_address))) / 10
-        if progress:
-            progress(round(3 / totalInfoCount, 1))
-        accel = self.extractValueFromResponse(self.get_acceleration(motor_address))
-        if progress:
-            progress(round(4 / totalInfoCount, 1))
-        decel = self.extractValueFromResponse(self.get_deceleration(motor_address))
-        if progress:
-            progress(round(5 / totalInfoCount, 1))
-        jogsp = self.extractValueFromResponse(self.get_jog_speed(motor_address))
-        if progress:
-            progress(round(6 / totalInfoCount, 1))
-        info = {
-            "pos": pos,
-            "temp": temp,
-            "vol": vol,
-            "accel": accel,
-            "decel": decel,
-            "jogsp": jogsp,
-        }
-        if progress:
-            progress(round(7 / totalInfoCount))
-
-        return info
-
-    def get_status(self, motor_address) -> str:
-        self.set_return_format_dexcimal(motor_address)
-        self.send(self.addressed_cmd(motor_address, "RS"))
-        self.new_value_event.wait(timeout=0.5)
-        return str(self.get_value())
+    def get_status(self, motor_address, command: StepperCommand, callback=None):
+        command = self.addressed_cmd(motor_address, command)
+        if callback:
+            self.pending_callbacks[command] = callback
+        self.sendQueue.put_nowait(command)
 
     def set_return_format_dexcimal(self, motor_address):
         self.send(self.addressed_cmd(motor_address, "IFD"))
@@ -457,8 +387,8 @@ class MoonsStepper(Subject):
         self.send(self.addressed_cmd(motor_address, "WT{}".format(wait_time)))
 
     def addressed_cmd(self, motor_address, command):
-        if motor_address == "":
-            return f"~{command}"
+        # if motor_address == "":
+        #     return f"~{command}"
         return f"{motor_address}{command}"
 
     def extractValueFromResponse(self, response):
@@ -470,28 +400,6 @@ class MoonsStepper(Subject):
             return result.group(1)
         else:
             return None
-
-    def get_value(self):
-        print("Waiting for value")
-        self.new_data_event.wait(timeout=0.5)
-        print("Recv:" + self.listeningBufferPre)
-        self.new_data_event.clear()
-        return self.listeningBufferPre
-        # if "%" in self.listeningBufferPre:
-        #     return "success_ack"
-        # if "?" in self.listeningBufferPre:
-        #     return "fail_ack"
-        # if "*" in self.listeningBufferPre:
-        #     return "buffered_ack"
-        # self.new_value_event.set()
-        # pattern = r"=(\w+(?:\.\w+)?|\d+(?:\.\d+)?)"
-        # result = re.search(pattern, self.listeningBufferPre)
-        # self.listeningBufferPre = ""
-        # self.new_value_event.clear()
-        # if result:
-        #     return result.group(1)
-        # else:
-        #     return "No_value_found"
 
 
 # endregion
