@@ -138,7 +138,13 @@ class MoonsStepper(Subject):
         print(Panel(port_info, title="All COMPorts"))
         return simple_ports
 
+    def __start_update_thread(self):
+        self.update_thread = threading.Thread(target=self.update, daemon=True)
+        self.is_updating = True
+        self.update_thread.start()
+
     def connect(self, COM=None, baudrate=9600, callback=None):
+        # Simulate mode
         if self.only_simulate:
             self.Opened = True
             self.device = f"Simulate-{self.universe}"
@@ -149,62 +155,56 @@ class MoonsStepper(Subject):
 
         def attempt_connect(COM, baudrate):
             try:
-                self.ser = serial.Serial(COM, baudrate)
+                self.ser = serial.Serial(port=COM, baudrate=baudrate)
                 if self.ser is None:
-                    # print("> Device not found")
                     self.Opened = False
                 if self.ser.is_open:
-                    # print(f"Device: {self.device} | COM: {COM} connected")
                     self.Opened = True
+                    print(f"[bold green]Device connected[/bold green]: {self.device}")
 
-            except:
-                print("> Device error")
+            except Exception as e:
+                print(f"[bold red]Device error:[/bold red] {e} ")
                 self.Opened = False
 
+        ports = list(list_ports.comports())
         if COM is not None and not self.only_simulate:
             attempt_connect(COM, baudrate)
             if callback:
                 callback(self.device, self.Opened)
-            return
-        ports = list(list_ports.comports())
-        for p in ports:
-            m = re.match(
-                r"USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]*)", p.usb_info()
-            )
-            print(m, p.usb_info())
-            if (
-                m
-                and m.group(1) == self.VID
-                and m.group(2) == self.PID
-                # and m.group(3) == self.SERIAL_NUM
-            ):
-                print("find vid pid match")
-                if m.group(3) == self.SERIAL_NUM or self.SERIAL_NUM == "":
-                    print(
-                        f"Device: {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)} connected"
-                    )
-                    # start update thread
+        else:
+            for p in ports:
+                m = re.match(
+                    r"USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]*)", p.usb_info()
+                )
+                print(p.usb_info())
+                if (
+                    m
+                    and m.group(1) == self.VID
+                    and m.group(2) == self.PID
+                    # and m.group(3) == self.SERIAL_NUM
+                ):
+                    if m.group(3) == self.SERIAL_NUM or self.SERIAL_NUM == "":
+                        print(
+                            f"[bold yellow]Device founded:[/bold yellow] {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)}"
+                        )
+                        # start update thread
 
-                    self.device = p.description
+                        self.device = p.description
 
-                    attempt_connect(p.device, baudrate)
-                    time.sleep(0.5)
-                    self.update_thread = threading.Thread(
-                        target=self.update, daemon=True
-                    )
-                    self.is_updating = True
-                    self.update_thread.start()
-                    if callback:
-                        callback(self.device, self.Opened)
+                        attempt_connect(p.device, baudrate)
 
                         break
-                    break
 
-            if self.only_simulate:
-                self.device = "Simulate"
-                self.Opened = True
+                if self.only_simulate:
+                    self.device = "Simulate"
+                    self.Opened = True
+        time.sleep(0.5)
+        self.__start_update_thread()
+        if callback:
+            callback(self.device, self.Opened)
+
         if not self.Opened:
-            print("> Device not found")
+            print(f"[bold red]Device not found[/bold red]")
             if callback:
                 callback(self.device, self.Opened)
 
@@ -225,17 +225,12 @@ class MoonsStepper(Subject):
             self.Opened = False
             self.ser.flush()
             self.ser.close()
-            print(f"{self.device} Disconnected")
+            print(f"[bold red]Device disconnected[/bold red]: {self.device}")
 
     def send(self, command, eol=b"\r"):
         if (self.ser != None and self.ser.is_open) or self.only_simulate:
             self.temp_cmd = command + "\r"
 
-            # if "~" in self.temp_cmd:
-            #     # remove ~ in self.temp_cmd
-            #     self.temp_cmd = self.temp_cmd[1:]
-            # else:
-            # self.usedSendQueue.put(self.temp_cmd)
             if self.ser is not None or not self.only_simulate:
                 self.temp_cmd += "\r"
                 self.ser.write(self.temp_cmd.encode("ascii"))
