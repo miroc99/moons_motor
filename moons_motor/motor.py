@@ -258,8 +258,7 @@ class MoonsStepper(Subject):
         if value is not None:
             command = self.addressed_cmd(address, command + str(value))
         else:
-            # command = self.addressed_cmd(address, command)
-            command = f"{address}{command}"
+            command = self.addressed_cmd(address, command)
 
         self.sendQueue.put_nowait(command)
 
@@ -340,8 +339,6 @@ class MoonsStepper(Subject):
     # region utility functions
 
     def addressed_cmd(self, motor_address, command):
-        # if motor_address == "":
-        #     return f"~{command}"
         return f"{motor_address}{command}"
 
 
