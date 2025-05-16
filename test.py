@@ -15,14 +15,14 @@ def homing_callback(x):
 
 motor_ctrl.connect()
 sleep(1)
-motor_ctrl.send_command(command=StepperCommand.stop_kill)
+motor_ctrl.send_command(command=StepperCommand.STOP_KILL)
 motor_ctrl.home(onComplete=lambda x: homing_callback(x))
 
 while not homed:
     sleep(0.01)
 # # motor_ctrl.send("JS0.1")
 # # motor_ctrl.send("@CJ")
-# motor_ctrl.send_command(address="", command=StepperCommand.jog)
+# motor_ctrl.send_command(address="", command=StepperCommand.JOG)
 # # sleep(1)
 # for i in range(10):
 #     # motor_ctrl.change_jog_speed("", 2 * i)
@@ -41,8 +41,19 @@ while not homed:
 # motor_ctrl.send_command(StepperCommand.encoder_position, 0)
 # motor_ctrl.send_command(StepperCommand.set_position, 0)
 # sleep(1)
-motor_ctrl.get_status(
-    "@", StepperCommand.temperature, callback=lambda x: print(f"Status: {x}")
-)
+
+# motor_ctrl.send_command(command=StepperCommand.POSITION)
+
+
+def status_callback(x):
+    result = MoonsStepper.process_response(response=x)
+    address = result["address"]
+    command = result["command"]
+    value = result["value"]
+    print(f"Status callback: Address: {address}, Command: {command}, Value: {value}")
+
+
+motor_ctrl.get_status("@", StepperCommand.VOLTAGE, callback=status_callback)
+
 sleep(1)
 motor_ctrl.disconnect()

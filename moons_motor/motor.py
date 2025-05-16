@@ -17,38 +17,40 @@ class StepperModules:
     STM17S_3RN = "STM17S-3RN"
 
 
-@dataclass
+@dataclass(frozen=True)
 class StepperCommand:
-    jog: str = "CJ"  # Start jogging
-    jog_speed: str = "JS"  # Jogging speed (Need to set before start jogging)
-    change_jog_speed: str = "CS"  # Change jogging speed while jogging
-    stop_jog: str = "SJ"  # Stop jogging with deceleration
-    stop: str = "ST"  # Stop immediately
-    stop_decel: str = "STD"  # Stop with deceleration
-    stop_kill: str = "SK"  # Stop and kill all unexecuted commands
-    stop_kill_decel: str = (
-        "SKD"  # Stop and kill all unexecuted commands with deceleration
+    JOG: str = "CJ"  # Start jogging
+    JOG_SPEED: str = "JS"  # Jogging speed (Need to set before start jogging)
+    CHANGE_JOG_SPEED: str = "CS"  # Change jogging speed while jogging
+    STOP_JOG: str = "SJ"  # Stop jogging with deceleration
+    STOP: str = "ST"  # Stop immediately (No deceleration)
+    STOP_DECEL: str = "STD"  # Stop with deceleration
+    STOP_KILL: str = (
+        "SK"  # Stop with deceleration(Control by AM) and kill all unexecuted commands
     )
-    enable: str = "ME"  # Enable motor
-    disable: str = "MD"  # Disable motor
-    move_absolute: str = "FP"  # Move to absolute position
-    move_fixed_distance: str = "FL"  # Move to fixed distance
-    position: str = "IP"  # Motor absolute position(Calculated trajectory position)
-    temperature: str = "IT"  # Motor temperature
-    voltage: str = "IU"  # Motor voltage
+    STOP_KILL_DECEL: str = (
+        "SKD"  # Stop and kill all unexecuted commands with deceleration(Control by DE)
+    )
+    ENABLE: str = "ME"  # Enable motor
+    DISABLE: str = "MD"  # Disable motor
+    MOVE_ABSOLUTE: str = "FP"  # Move to absolute position
+    MOVE_FIXED_DISTANCE: str = "FL"  # Move to fixed distance
+    POSITION: str = "IP"  # Motor absolute position(Calculated trajectory position)
+    TEMPERATURE: str = "IT"  # Motor temperature
+    VOLTAGE: str = "IU"  # Motor voltage
 
-    encoder_position: str = "EP"  # Encoder position
-    set_position: str = "SP"  # Set encoder position
+    ENCODER_POSITION: str = "EP"  # Encoder position
+    SET_POSITION: str = "SP"  # Set encoder position
 
-    home: str = "SH"  # Home position
-    velocity: str = "VE"  # Set velocity
+    HOME: str = "SH"  # Home position
+    VELOCITY: str = "VE"  # Set velocity
 
-    alarm_reset: str = "AR"  # Reset alarm
+    ALARM_RESET: str = "AR"  # Reset alarm
 
-    set_return_format_dexcimal: str = "IFD"  # Set return format to decimal
-    set_return_format_hexdecimal: str = "IFH"  # Set return format to hexadecimal
+    SET_RETURN_FORMAT_DECIMAL: str = "IFD"  # Set return format to decimal
+    SET_RETURN_FORMAT_HEXADECIMAL: str = "IFH"  # Set return format to hexadecimal
 
-    set_transmit_delay: str = "TD"  # Set transmit delay
+    SET_TRANSMIT_DELAY: str = "TD"  # Set transmit delay
 
 
 class MoonsStepper(Subject):
@@ -147,6 +149,22 @@ class MoonsStepper(Subject):
             simple_ports.append(p.description)
         print(Panel(port_info, title="All COMPorts"))
         return simple_ports
+
+    @staticmethod
+    def process_response(response):
+        equal_sign_index = response.index("=")
+        address = response[0]
+        command = response[1:equal_sign_index]
+        value = response[equal_sign_index + 1 :]
+
+        if command == "IT" or command == "IU":
+            # Handle temperature response
+            value = int(value) / 10.0
+        return {
+            "address": address,
+            "command": command,
+            "value": value,
+        }
 
     def __start_update_thread(self):
         self.update_thread = threading.Thread(target=self.update, daemon=True)
@@ -269,7 +287,7 @@ class MoonsStepper(Subject):
                 if self.ser.in_waiting > 0:
                     response = self.ser.read(self.ser.in_waiting)
                     response = response.decode("ascii", errors="ignore").strip()
-                    self.process_recv(response)
+                    self.handle_recv(response)
                     time.sleep(0.01)  # Send delay
             if self.sendQueue.empty() != True:
                 while not self.sendQueue.empty():
@@ -280,7 +298,7 @@ class MoonsStepper(Subject):
                     0.01
                 )  # Time for RS485 converter to switch between Transmit and Receive mode
 
-    def process_recv(self, response):
+    def handle_recv(self, response):
         if "*" in response:
             print("buffered_ack")
         elif "%" in response:
@@ -310,20 +328,20 @@ class MoonsStepper(Subject):
 
     def home(self, motor_address="", speed=0.3, onComplete=None):
         self.send_command(
-            address=motor_address, command=StepperCommand.velocity, value=speed
+            address=motor_address, command=StepperCommand.VELOCITY, value=speed
         )
         self.send_command(
-            address=motor_address, command=StepperCommand.home, value="3F"
+            address=motor_address, command=StepperCommand.HOME, value="3F"
         )
         self.send_command(
-            address=motor_address, command=StepperCommand.encoder_position
+            address=motor_address, command=StepperCommand.ENCODER_POSITION
         )
         self.send_command(
-            address=motor_address, command=StepperCommand.set_position, value=0
+            address=motor_address, command=StepperCommand.SET_POSITION, value=0
         )
         if onComplete:
             self.get_status(
-                motor_address, StepperCommand.set_position, callback=onComplete
+                motor_address, StepperCommand.SET_POSITION, callback=onComplete
             )
 
     # endregion
