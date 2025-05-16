@@ -40,7 +40,7 @@ class StepperCommand:
     encoder_position: str = "EP"  # Encoder position
     set_position: str = "SP"  # Set encoder position
 
-    home: str = "SH3F"  # Home position
+    home: str = "SH"  # Home position
     velocity: str = "VE"  # Set velocity
 
     alarm_reset: str = "AR"  # Reset alarm
@@ -288,7 +288,7 @@ class MoonsStepper(Subject):
         elif "?" in response:
             print(f"[bold red](x)fail_ack[/bold red]")
         else:
-            print(f"[bold blue]Received:[/bold blue]", response)
+            print(f"[bold blue]Received from {self.device}: [/bold blue]", response)
             self.recvQueue.put_nowait(response)
 
             for command, callback in list(self.pending_callbacks.items()):
@@ -313,8 +313,7 @@ class MoonsStepper(Subject):
             address=motor_address, command=StepperCommand.velocity, value=speed
         )
         self.send_command(
-            address=motor_address,
-            command=StepperCommand.home,
+            address=motor_address, command=StepperCommand.home, value="3F"
         )
         self.send_command(
             address=motor_address, command=StepperCommand.encoder_position
