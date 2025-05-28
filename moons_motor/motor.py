@@ -1,4 +1,5 @@
 import serial
+import serial.rs485
 from serial.tools import list_ports
 import re
 import threading
@@ -110,9 +111,10 @@ class MoonsStepper(Subject):
         self.Opened = False
         self.recvQueue = queue.Queue()
         self.sendQueue = queue.Queue()
-        self.pending_callbacks = {}
+        self.pending_callbacks = queue.Queue()
         self.update_thread = None
         self.is_updating = False
+        self.readBuffer = ""
 
         self.console = Console()
 
@@ -183,7 +185,22 @@ class MoonsStepper(Subject):
 
         def attempt_connect(COM, baudrate):
             try:
-                self.ser = serial.Serial(port=COM, baudrate=baudrate)
+                # self.ser = serial.Serial(
+                #     port=COM,
+                #     baudrate=baudrate,
+                #     bytesize=serial.EIGHTBITS,
+                #     parity=serial.PARITY_NONE,
+                #     stopbits=serial.STOPBITS_ONE,
+                #     timeout=0.5,
+                # )
+                self.ser = serial.rs485.RS485(port=COM, baudrate=baudrate)
+                self.ser.rs485_mode = serial.rs485.RS485Settings(
+                    rts_level_for_tx=True,
+                    rts_level_for_rx=False,
+                    loopback=False,
+                    delay_before_tx=0.02,
+                    delay_before_rx=0.02,
+                )
                 if self.ser is None:
                     self.Opened = False
                 if self.ser.is_open:
@@ -236,6 +253,8 @@ class MoonsStepper(Subject):
                 callback(self.device, self.Opened)
 
     def disconnect(self):
+        self.send_command(command=StepperCommand.STOP_KILL)
+        time.sleep(0.5)
         self.sendQueue.queue.clear()
         self.recvQueue.queue.clear()
         self.is_updating = False
@@ -287,20 +306,29 @@ class MoonsStepper(Subject):
                 if self.ser.in_waiting > 0:
                     response = self.ser.read(self.ser.in_waiting)
                     response = response.decode("ascii", errors="ignore").strip()
-                    self.handle_recv(response)
-                    time.sleep(0.01)  # Send delay
+                    print(response)
+                    response = response.split("\r")
+
+                    for r in response:
+                        if r != "":
+                            self.readBuffer += r
+                            self.handle_recv(r)
+
             if self.sendQueue.empty() != True:
                 while not self.sendQueue.empty():
+                    # time.sleep(
+                    #     0.05
+                    # )  # Time for RS485 converter to switch between Transmit and Receive mode
                     cmd = self.sendQueue.get_nowait()
                     self.send(cmd)
                     self.sendQueue.task_done()
-                time.sleep(
-                    0.01
-                )  # Time for RS485 converter to switch between Transmit and Receive mode
+                # time.sleep(
+                #     0.01
+                # )  # Time for RS485 converter to switch between Transmit and Receive mode
 
     def handle_recv(self, response):
         if "*" in response:
-            print("buffered_ack")
+            print(f"[bold green](o)buffered_ack[/bold green]")
         elif "%" in response:
             print(f"[bold green](v)success_ack[/bold green]")
         elif "?" in response:
@@ -309,22 +337,26 @@ class MoonsStepper(Subject):
             print(f"[bold blue]Received from {self.device}: [/bold blue]", response)
             self.recvQueue.put_nowait(response)
 
-            for command, callback in list(self.pending_callbacks.items()):
-                if command in response:
-                    if callback:
-                        callback(response)
-                    del self.pending_callbacks[command]
-                    break
+            if "=" in response:
+                callback = self.pending_callbacks.get_nowait()
+                if callback:
+                    callback(response)
+            # for command, callback in list(self.pending_callbacks.items()):
+            #     if command in response:
+            #         if callback:
+            #             callback(response)
+            #         del self.pending_callbacks[command]
+            #         break
 
     # endregion
 
     # region motor motion functions
 
-    def setup_motor(self, motor_address="", kill=False):
-        if kill:
-            self.stop_and_kill(motor_address)
-        self.set_transmit_delay(motor_address, 25)
-        self.set_return_format_dexcimal(motor_address)
+    # def setup_motor(self, motor_address="", kill=False):
+    #     if kill:
+    #         self.stop_and_kill(motor_address)
+    #     self.set_transmit_delay(motor_address, 25)
+    #     self.set_return_format_dexcimal(motor_address)
 
     def home(self, motor_address="", speed=0.3, onComplete=None):
         self.send_command(
@@ -348,7 +380,7 @@ class MoonsStepper(Subject):
     def get_status(self, motor_address, command: StepperCommand, callback=None):
         command = self.addressed_cmd(motor_address, command)
         if callback:
-            self.pending_callbacks[command] = callback
+            self.pending_callbacks.put_nowait(callback)
         self.sendQueue.put_nowait(command)
 
     # endregion
