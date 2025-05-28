@@ -278,7 +278,6 @@ class MoonsStepper(Subject):
             self.temp_cmd = command + "\r"
 
             if self.ser is not None or not self.only_simulate:
-                self.temp_cmd += "\r"
                 self.ser.write(self.temp_cmd.encode("ascii"))
             if self.is_log_message:
                 print(
@@ -315,6 +314,9 @@ class MoonsStepper(Subject):
                             self.handle_recv(r)
 
             if self.sendQueue.empty() != True:
+                # time.sleep(
+                #     0.02
+                # )  # Time for RS485 converter to switch between Transmit and Receive mode
                 while not self.sendQueue.empty():
                     # time.sleep(
                     #     0.05
@@ -322,9 +324,6 @@ class MoonsStepper(Subject):
                     cmd = self.sendQueue.get_nowait()
                     self.send(cmd)
                     self.sendQueue.task_done()
-                # time.sleep(
-                #     0.01
-                # )  # Time for RS485 converter to switch between Transmit and Receive mode
 
     def handle_recv(self, response):
         if "*" in response:

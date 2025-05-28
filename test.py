@@ -2,7 +2,7 @@ from moons_motor.motor import MoonsStepper, StepperModules, StepperCommand
 from time import sleep
 
 motor_ctrl = MoonsStepper(
-    StepperModules.STM17S_3RN, VID="0403", PID="6001", SERIAL_NUM="B0029TYYA"
+    StepperModules.STM17S_3RN, VID="1A86", PID="7523", SERIAL_NUM=""
 )
 homed = False
 
@@ -30,23 +30,23 @@ def status_callback(x):
 
 # sleep(0.1)
 sleep(1)
-motor_ctrl.get_status("@", StepperCommand.VOLTAGE, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.VOLTAGE, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.POSITION, callback=status_callback)
 
 motor_ctrl.send_command(command=StepperCommand.MOVE_FIXED_DISTANCE, value=5000)
 
-motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-# motor_ctrl.send_command(command=StepperCommand.JOG)
-# motor_ctrl.get_status("@", StepperCommand.VOLTAGE, callback=status_callback)
-# motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
-# motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
-# motor_ctrl.get_status("@", StepperCommand.TEMPERATURE, callback=status_callback)
-# motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-# motor_ctrl.send_command(command=StepperCommand.JOG_SPEED, value=5)
-# sleep(3)
-# motor_ctrl.get_status("@", StepperCommand.TEMPERATURE, callback=status_callback)
-# motor_ctrl.send_command(command=StepperCommand.STOP_JOG)
-# motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-# motor_ctrl.send_command(command=StepperCommand.CHANGE_JOG_SPEED, value=5)
+motor_ctrl.get_status("1", StepperCommand.JOG_SPEED, callback=status_callback)
+motor_ctrl.send_command(command=StepperCommand.JOG)
+motor_ctrl.get_status("1", StepperCommand.VOLTAGE, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.POSITION, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.POSITION, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.TEMPERATURE, callback=status_callback)
+motor_ctrl.get_status("1", StepperCommand.JOG_SPEED, callback=status_callback)
+motor_ctrl.send_command(command=StepperCommand.JOG_SPEED, value=5)
+sleep(3)
+motor_ctrl.get_status("1", StepperCommand.TEMPERATURE, callback=status_callback)
+motor_ctrl.send_command(command=StepperCommand.STOP_JOG)
+motor_ctrl.get_status("1", StepperCommand.JOG_SPEED, callback=status_callback)
+motor_ctrl.send_command(command=StepperCommand.CHANGE_JOG_SPEED, value=5)
 sleep(3)
 motor_ctrl.disconnect()
