@@ -305,7 +305,6 @@ class MoonsStepper(Subject):
                 if self.ser.in_waiting > 0:
                     response = self.ser.read(self.ser.in_waiting)
                     response = response.decode("ascii", errors="ignore").strip()
-                    print(response)
                     response = response.split("\r")
 
                     for r in response:
