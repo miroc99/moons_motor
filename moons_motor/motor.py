@@ -52,6 +52,7 @@ class StepperCommand:
     SET_RETURN_FORMAT_HEXADECIMAL: str = "IFH"  # Set return format to hexadecimal
 
     SET_TRANSMIT_DELAY: str = "TD"  # Set transmit delay
+    REQUEST_STATUS: str = "RS"  # Request status
 
 
 class MoonsStepper(Subject):
@@ -357,6 +358,32 @@ class MoonsStepper(Subject):
     #     self.set_return_format_dexcimal(motor_address)
 
     def home(self, motor_address="", speed=0.3, onComplete=None):
+        homing_complete = threading.Event()  # Shared event to signal completion
+
+        def check_status(response):
+            result = MoonsStepper.process_response(response)
+            print(f"[bold blue]Status check result:[/bold blue] {result}")
+            if "H" not in result["value"]:
+                print("[bold green]Motor is homed.[/bold green]")
+                if onComplete:  # Call the onComplete callback if provided
+                    onComplete(result)
+                homing_complete.set()  # Signal that homing is complete
+            else:
+                print("[bold yellow]Motor is not homed yet.[/bold yellow]")
+
+        def check_homing_complete():
+            while not homing_complete.is_set():  # Loop until homing is complete
+                self.get_status(
+                    motor_address=motor_address,
+                    command=StepperCommand.REQUEST_STATUS,
+                    callback=check_status,
+                )
+                time.sleep(0.3)
+
+        home_thread = threading.Thread(
+            target=check_homing_complete,
+            daemon=True,
+        )
         self.send_command(
             address=motor_address, command=StepperCommand.VELOCITY, value=speed
         )
@@ -364,15 +391,12 @@ class MoonsStepper(Subject):
             address=motor_address, command=StepperCommand.HOME, value="3F"
         )
         self.send_command(
-            address=motor_address, command=StepperCommand.ENCODER_POSITION
+            address=motor_address, command=StepperCommand.ENCODER_POSITION, value=0
         )
         self.send_command(
             address=motor_address, command=StepperCommand.SET_POSITION, value=0
         )
-        if onComplete:
-            self.get_status(
-                motor_address, StepperCommand.SET_POSITION, callback=onComplete
-            )
+        home_thread.start()
 
     # endregion
     def get_status(self, motor_address, command: StepperCommand, callback=None):
@@ -380,6 +404,33 @@ class MoonsStepper(Subject):
         if callback:
             self.pending_callbacks.put_nowait(callback)
         self.sendQueue.put_nowait(command)
+
+    def decode_status(status_code):
+        """
+        Decode the status code from the motor.
+        """
+        status = {
+            "A": "An Alarm code is present (use AL command to see code, AR command to clear code)",
+            "D": "Disabled (the drive is disabled)",
+            "E": "Drive Fault (drive must be reset by AR command to clear this fault)",
+            "F": "Motor moving",
+            "H": "Homing (SH in progress)",
+            "J": "Jogging (CJ in progress)",
+            "M": "Motion in progress (Feed & Jog Commands)",
+            "P": "In position",
+            "R": "Ready (Drive is enabled and ready)",
+            "S": "Stopping a motion (ST or SK command executing)",
+            "T": "Wait Time (WT command executing)",
+            "W": "Wait Input (WI command executing)",
+        }
+        status_string = ""
+        for char in status_code:
+            if char in status:
+                status_string += status[char]
+                status_string += "\n"
+            else:
+                status_string += f"Unknown status code: {char}"
+        return status_string
 
     # endregion
 

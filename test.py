@@ -19,6 +19,15 @@ motor_ctrl.send_command(command=StepperCommand.STOP_KILL)
 motor_ctrl.send_command(command="IFD")
 
 
+def check_status(response):
+    global homed
+    print("Checking status...")
+    result = MoonsStepper.process_response(response=response)
+    print(f"Status check result: {result["value"]}")
+    print("=========Status========")
+    print(MoonsStepper.decode_status(status_code=result["value"]))
+
+
 def status_callback(x):
     result = MoonsStepper.process_response(response=x)
     print(f"Status callback received: {result}")
@@ -28,25 +37,18 @@ def status_callback(x):
     print(f"Status callback: Address: {address}, Command: {command}, Value: {value}")
 
 
-# sleep(0.1)
-sleep(1)
-motor_ctrl.get_status("@", StepperCommand.VOLTAGE, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
-
-motor_ctrl.send_command(command=StepperCommand.MOVE_FIXED_DISTANCE, value=5000)
-
-motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-motor_ctrl.send_command(command=StepperCommand.JOG)
-motor_ctrl.get_status("@", StepperCommand.VOLTAGE, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.POSITION, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.TEMPERATURE, callback=status_callback)
-motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-motor_ctrl.send_command(command=StepperCommand.JOG_SPEED, value=5)
-sleep(3)
-motor_ctrl.get_status("@", StepperCommand.TEMPERATURE, callback=status_callback)
-motor_ctrl.send_command(command=StepperCommand.STOP_JOG)
-motor_ctrl.get_status("@", StepperCommand.JOG_SPEED, callback=status_callback)
-motor_ctrl.send_command(command=StepperCommand.CHANGE_JOG_SPEED, value=5)
+# motor_ctrl.home(motor_address="@", onComplete=homing_callback)
+# while not homed:
+#     sleep(0.1)
+# print("Homing completed.")
+motor_ctrl.send_command(address="@", command=StepperCommand.JOG)
+motor_ctrl.send_command(address="1", command=StepperCommand.JOG)
+sleep(2)
+motor_ctrl.get_status(
+    motor_address="@", command=StepperCommand.REQUEST_STATUS, callback=check_status
+)
+motor_ctrl.get_status(
+    motor_address="1", command=StepperCommand.REQUEST_STATUS, callback=check_status
+)
 sleep(3)
 motor_ctrl.disconnect()

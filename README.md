@@ -18,7 +18,7 @@ python -m pip install moons_motor
 ## Usage
 
 ```python
-from motor import MoonsStepper, StepperModules
+from motor import MoonsStepper, StepperModules, StepperCommand
 import simulate
 from time import sleep
 
@@ -27,9 +27,9 @@ motor = MoonsStepper(StepperModules.STM17S_3RN, "0403", "6001", "TESTA")
 MoonsStepper.list_all_ports()
 motor.connect()
 
-motor.start_jog("", 10)
+motor.send_command(address="@", command=StepperCommand.JOG)
 sleep(5)
-motor.stop_jog()
+motor.send_command(address="@", command=StepperCommand.STOP_JOG)
 
 ```
 
