@@ -13,6 +13,66 @@ import threading
 
 from dataclasses import dataclass
 
+import logging
+
+
+class ColoredFormatter(logging.Formatter):
+    # Define ANSI escape codes for colors and reset
+    grey = "\x1b[38;21m"
+    yellow = "\x1b[33;21m"
+    red = "\x1b[31;21m"
+    bold_red = "\x1b[31;1m"
+    bold_yellow = "\x1b[33;1m"
+    bold_green = "\x1b[32;1m"
+    bold_blue = "\x1b[34;1m"
+    bold_cyan = "\x1b[36;1m"
+    bold_magenta = "\x1b[35;1m"
+    reset = "\x1b[0m"
+
+    # Define the base format string
+    format_time = "%(asctime)s"
+    format_header = " [%(levelname)s]"
+    format_base = " %(message)s"
+
+    # Map log levels to colored format strings
+    FORMATS = {
+        logging.DEBUG: format_time
+        + bold_cyan
+        + format_header
+        + reset
+        + format_base
+        + reset,
+        logging.INFO: format_time
+        + bold_green
+        + format_header
+        + reset
+        + format_base
+        + reset,
+        logging.WARNING: format_time
+        + bold_yellow
+        + format_header
+        + reset
+        + format_base
+        + reset,
+        logging.ERROR: format_time
+        + bold_red
+        + format_header
+        + reset
+        + format_base
+        + reset,
+        logging.CRITICAL: format_time
+        + bold_magenta
+        + format_header
+        + reset
+        + format_base
+        + reset,
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
 
 class StepperModules:
     STM17S_3RN = "STM17S-3RN"
@@ -22,6 +82,9 @@ class StepperModules:
 class StepperCommand:
     JOG: str = "CJ"  # Start jogging
     JOG_SPEED: str = "JS"  # Jogging speed (Need to set before start jogging)
+    JOG_ACCELERATION: str = (
+        "JA"  # Jogging acceleration (Need to set before start jogging)
+    )
     CHANGE_JOG_SPEED: str = "CS"  # Change jogging speed while jogging
     STOP_JOG: str = "SJ"  # Stop jogging with deceleration
     STOP: str = "ST"  # Stop immediately (No deceleration)
@@ -90,6 +153,13 @@ class MoonsStepper(Subject):
         "?",
         "@",
     ]
+    # Configure logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(ColoredFormatter())
+    logger.addHandler(ch)
 
     def __init__(
         self,
@@ -179,7 +249,7 @@ class MoonsStepper(Subject):
         if self.only_simulate:
             self.Opened = True
             self.device = f"Simulate-{self.universe}"
-            print(f"{self.device} connected")
+            MoonsStepper.logger.info(f"{self.device} connected")
             if callback:
                 callback(self.device, self.Opened)
             return
@@ -206,10 +276,10 @@ class MoonsStepper(Subject):
                     self.Opened = False
                 if self.ser.is_open:
                     self.Opened = True
-                    print(f"[bold green]Device connected[/bold green]: {self.device}")
+                    MoonsStepper.logger.info(f"Device connected: {self.device}")
 
             except Exception as e:
-                print(f"[bold red]Device error:[/bold red] {e} ")
+                MoonsStepper.logger.error(f"Device error: {e} ")
                 self.Opened = False
 
         ports = list(list_ports.comports())
@@ -222,7 +292,7 @@ class MoonsStepper(Subject):
                 m = re.match(
                     r"USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]*)", p.usb_info()
                 )
-                print(p.usb_info())
+                MoonsStepper.logger.info(p.usb_info())
                 if (
                     m
                     and m.group(1) == self.VID
@@ -230,8 +300,8 @@ class MoonsStepper(Subject):
                     # and m.group(3) == self.SERIAL_NUM
                 ):
                     if m.group(3) == self.SERIAL_NUM or self.SERIAL_NUM == "":
-                        print(
-                            f"[bold yellow]Device founded:[/bold yellow] {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)}"
+                        MoonsStepper.logger.info(
+                            f"Device founded: {p.description} | VID: {m.group(1)} | PID: {m.group(2)} | SER: {m.group(3)}"
                         )
 
                         self.device = p.description
@@ -249,7 +319,7 @@ class MoonsStepper(Subject):
             callback(self.device, self.Opened)
 
         if not self.Opened:
-            print(f"[bold red]Device not found[/bold red]")
+            MoonsStepper.logger.error(f"Device not found")
             if callback:
                 callback(self.device, self.Opened)
 
@@ -264,7 +334,7 @@ class MoonsStepper(Subject):
             self.listen = False
             self.is_sending = False
             self.Opened = False
-            print(f"Simulate-{self.universe} disconnected")
+            MoonsStepper.logger.info(f"Simulate-{self.universe} disconnected")
             return
         if self.ser is not None and self.ser.is_open:
             self.listen = False
@@ -272,7 +342,7 @@ class MoonsStepper(Subject):
             self.Opened = False
             self.ser.flush()
             self.ser.close()
-            print(f"[bold red]Device disconnected[/bold red]: {self.device}")
+            MoonsStepper.logger.info(f"Device disconnected: {self.device}")
 
     def send(self, command, eol=b"\r"):
         if (self.ser != None and self.ser.is_open) or self.only_simulate:
@@ -281,16 +351,16 @@ class MoonsStepper(Subject):
             if self.ser is not None or not self.only_simulate:
                 self.ser.write(self.temp_cmd.encode("ascii"))
             if self.is_log_message:
-                print(
-                    f"[bold green]Send to {self.device}:[/bold green] {self.temp_cmd}"
-                )
+                MoonsStepper.logger.debug(f"Send to {self.device}: {self.temp_cmd}")
             super().notify_observers(f"{self.universe}-{self.temp_cmd}")
         else:
-            print(f"Target device is not opened. Command: {command}")
+            MoonsStepper.logger.debug(
+                f"Target device is not opened. Command: {command}"
+            )
 
     def send_command(self, address="", command="", value=None):
         if command == "":
-            print("Command can't be empty")
+            MoonsStepper.logger.warning("Command can't be empty")
             return
         if value is not None:
             command = self.addressed_cmd(address, command + str(value))
@@ -327,13 +397,13 @@ class MoonsStepper(Subject):
 
     def handle_recv(self, response):
         if "*" in response:
-            print(f"[bold green](o)buffered_ack[/bold green]")
+            MoonsStepper.logger.info(f"(o)buffered_ack")
         elif "%" in response:
-            print(f"[bold green](v)success_ack[/bold green]")
+            MoonsStepper.logger.info(f"(v)success_ack")
         elif "?" in response:
-            print(f"[bold red](x)fail_ack[/bold red]")
+            MoonsStepper.logger.info(f"(x)fail_ack")
         else:
-            print(f"[bold blue]Received from {self.device}: [/bold blue]", response)
+            MoonsStepper.logger.info(f"Received from {self.device}: ", response)
             self.recvQueue.put_nowait(response)
 
             if "=" in response:
@@ -362,14 +432,14 @@ class MoonsStepper(Subject):
 
         def check_status(response):
             result = MoonsStepper.process_response(response)
-            print(f"[bold blue]Status check result:[/bold blue] {result}")
+            MoonsStepper.logger.info(f"Status check result: {result}")
             if "H" not in result["value"]:
-                print("[bold green]Motor is homed.[/bold green]")
+                MoonsStepper.logger.info("Motor is homed.")
                 if onComplete:  # Call the onComplete callback if provided
                     onComplete(result)
                 homing_complete.set()  # Signal that homing is complete
             else:
-                print("[bold yellow]Motor is not homed yet.[/bold yellow]")
+                MoonsStepper.logger.info("Motor is not homed yet.")
 
         def check_homing_complete():
             while not homing_complete.is_set():  # Loop until homing is complete
@@ -444,6 +514,7 @@ class MoonsStepper(Subject):
 
 # SERIAL => 上次已知父系(尾巴+A) 或是事件分頁
 # reg USB\s*VID:PID=(\w+):(\w+)\s*SER=([A-Za-z0-9]+)
+
 
 # serial_num  裝置例項路徑
 # TD(Tramsmit Delay) = 15

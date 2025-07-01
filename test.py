@@ -13,6 +13,8 @@ def homing_callback(x):
     homed = True
 
 
+MoonsStepper.list_all_ports()
+
 motor_ctrl.connect()
 sleep(1)
 motor_ctrl.send_command(command=StepperCommand.STOP_KILL)
@@ -43,12 +45,13 @@ def status_callback(x):
 # print("Homing completed.")
 motor_ctrl.send_command(address="@", command=StepperCommand.JOG)
 motor_ctrl.send_command(address="1", command=StepperCommand.JOG)
+motor_ctrl.send_command(address="", command="")
 sleep(2)
-motor_ctrl.get_status(
-    motor_address="@", command=StepperCommand.REQUEST_STATUS, callback=check_status
-)
-motor_ctrl.get_status(
-    motor_address="1", command=StepperCommand.REQUEST_STATUS, callback=check_status
-)
+# motor_ctrl.get_status(
+#     motor_address="@", command=StepperCommand.REQUEST_STATUS, callback=check_status
+# )
+# motor_ctrl.get_status(
+#     motor_address="1", command=StepperCommand.REQUEST_STATUS, callback=check_status
+# )
 sleep(3)
 motor_ctrl.disconnect()
