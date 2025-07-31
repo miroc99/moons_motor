@@ -403,7 +403,7 @@ class MoonsStepper(Subject):
         elif "?" in response:
             MoonsStepper.logger.info(f"(x)fail_ack")
         else:
-            MoonsStepper.logger.info(f"Received from {self.device}: ", response)
+            MoonsStepper.logger.info(f"Received from {self.device}: {response}")
             self.recvQueue.put_nowait(response)
 
             if "=" in response:

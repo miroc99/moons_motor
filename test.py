@@ -14,7 +14,7 @@ def homing_callback(x):
 
 
 MoonsStepper.list_all_ports()
-
+MoonsStepper.logger.setLevel("DEBUG")
 motor_ctrl.connect()
 sleep(1)
 motor_ctrl.send_command(command=StepperCommand.STOP_KILL)
